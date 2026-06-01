@@ -901,15 +901,16 @@ Sometimes a single well-chosen task reveals more about a model than any benchmar
 backwards forces character-level thinking — and that sits awkwardly against how tokenisation works.
 
 ::: task
-**21.** Ask all three models — ChatGPT, `gemma-3-4b` in LM Studio, and the smallest Gemma 4 model you have — to
-perform this task:
+**21.** Ask all three models — ChatGPT, `gemma-3-4b` in LM Studio, and the smallest Gemma 4 model you have, to
+perform this task. Make sure to turn off the thinking mode or reasoning toggle if your interface has one:
 
 ``` {.default code-line-numbers="false"}
-Spell the following word backwards, one character at a time: Relativitätstheorie
+Spell the following word backwards, one character at a time: 
+Relativitätstheorie
 ```
 
 Record each model's answer exactly as given. Which model gets it right? Which produces a confident-looking but
-wrong answer? Does the model preserve the umlaut `ä` correctly in its answer?
+wrong answer?
 :::
 
 ::: placeholder
@@ -923,24 +924,16 @@ print(word[::-1])     # correct reversed string
 :::
 
 ::: worked-solution
-**Correct answer:**
+
+You will probably find that big models handle this task correctly, while smaller models produce a plausible-looking but incorrect string. Here is a fun fact: reversing a word is a two-line program in Python. You can verify the correct answer with:
 
 ```python
 word = "Relativitätstheorie"
 print(word[::-1])
-# eiroehtStätivitaleR
 ```
 
-Checking by sub-parts:
+We have discussed the two worlds for solving problems in the first experiment [Rules vs. Learning](experiment-rules-vs-learning.qmd): on the one hand, we can solve tasks with rules that we write up as algorithms in code. On the other hand, there are problems that are too complex to write rules for, so we have the solution learned by a machine learning algorithm. Reversing a text seems to be hard for LLMs, but very simple for a rule-based approach. There are many such examples, amongst which is also the world of math.
 
-- `theorie` reversed → `eiroeht`
-- `s` → `s`
-- `ität` reversed → `täti`
-- `Relativ` reversed → `vitaleR`
-
-Combined: `eiroeht` + `s` + `täti` + `vitaleR` = **eiroehtStätivitaleR**
-
-All characters are lowercase except the final `R`, which was the first character of the original word.
 
 **Typical model behaviour:**
 
@@ -952,6 +945,32 @@ All characters are lowercase except the final `R`, which was the first character
 
 The failure pattern for small models is not random noise. They produce strings that *look like* a reversed German
 word and are close but wrong. This is the model predicting a plausible continuation — not executing an algorithm.
+:::
+
+
+::: task
+**22a.** Now, try a different prompt with a shorter word. Try only the smallest model available, for example `gemma-3-4b`:
+
+``` {.default code-line-numbers="false"}
+Spell the following word backwards, one character at a time: 
+Laptop
+```
+
+In will probably fail to produce the correct `potpaL`. Now, try this prompt:
+
+``` {.default code-line-numbers="false"}
+Reverse the following sequence of letters:
+
+L
+a
+p
+t
+o
+p
+```
+
+Why does the model handle the reversal-task better when formulated this way?
+
 :::
 
 ::: task
@@ -1149,19 +1168,42 @@ What is 17.3 multiplied by 41.8? Show the full result.
 :::
 
 ::: worked-solution
-**Temperature in Osnabrück:** The model has no access to real-time sensor data. It can give a seasonally plausible estimate ("typically around 8°C in April") but cannot provide the actual current temperature. The gap is *data freshness* — no amount of additional reasoning helps.
+The first prompt the model cannot answer from its weights alone. It could give a seasonally plausible estimate ("typically around 8°C in April") but cannot provide the actual current temperature. The gap is *data freshness*, no amount of additional reasoning helps. The training data ended at some point in the past, everything that happened afterwards is out of scope for the LLM. And even if we asked about the weather from a year ago, it is unlikely the training data contained this very specific information.
 
-*Fix:* A weather API tool. The model calls `get_weather(city="Osnabrück")`, receives the current reading, and incorporates it into the answer. The model contributes language understanding; the tool contributes current data.
+However, modern tools like ChatGPT, Gemini and Claude all seem to have a good answer to our question. How do they do it?
 
-**17.3 × 41.8 = 722.74:** Many models produce this correctly. But LLMs are not arithmetic engines — they predict the most probable continuation of the expression, which happens to be the correct answer for common multiplication cases. Precision is not guaranteed on arbitrary floating-point operations. The model is *usually right* but *not reliably right* in the way a calculator is.
+To include current data in its response,an LLM need access to a data source it can query and that contains the relevant information. The most general source would be a simple web search, like you would use Google. An alternative could be a more specialized data source, not for general web search, but for weather information only. In both cases, we can provide such data sources to the model in the shape of **tools** the model can access if it decides to do so. How does that work?
 
-*Fix:* A calculator tool or Python `eval()`. The result is deterministic, exact, and instantly verifiable.
+Actually quite simple. Imagine the following prompt:
 
-**Key distinction:** the weather case is about *missing current information* (the answer does not exist in the weights at all). The arithmetic case is about *unreliable computation* (the answer probably exists in the weights as a high-probability continuation, but "probably" is not acceptable when precision matters).
+``` {.default code-line-numbers="false"}
+You are a helpful assistant. If the user asks for the current weather in
+a location, you can call a tool "get_weather(loaction)" and pass the name of the
+location.
+
+Here is what the user said:
+
+What is the current temperature in Osnabrück right now?
+```
+
+Based on the description of the tool `get_weather`, the model can now decide to use this tool first instead of giving an answer back to the user. The answer to the user's query is now a multi-step process (see @fig-llm-weather-tool).
+
+![The LLM can "decide" to call a tool before responding to the user query.](../images/llm_weather_tool.svg){#fig-llm-weather-tool .lightbox}
+
+
+Let's now look at the second prompt about math. Many models can correctly calculate the result for the multiplication **17.3 × 41.8**. Especially if their reasoning mode is enabled. But generally, LLMs are not arithmetic engines, they predict the most probable continuation of the expression, which happens to be the correct answer for common multiplication cases. Precision is not guaranteed on arbitrary floating-point operations. The model is *often right* but *not reliably right* in the way a calculator is.
+
+Here again, a tool should be used. A simple calculator tool can do the job. The result is deterministic, exact, and instantly verifiable. So simple rules suffice.
+
+For more complex problems, LLMs can even write their own tools. How? What if we give an LLM a tool that allows for the execution of Python code? The model can then generate a Python function that addresses the problem, and execute it through the tool. This is a powerful way to extend the model's capabilities without needing to hard-code specific tools for every possible task. And LLMs are very good at generating code, as code is predictable and follows strict syntax rules. But be careful: a powerful tool like this poses risks. What if the model generates code that deletes files, sends emails, or makes unauthorized API calls? This is why tool design and permission management are critical in real-world applications.
+
+![Tools allow us to merge the best of the two worlds: rules and learning.](../images/llm_tools.svg){#fig-llm-tools .lightbox}
+
+In summary, we can distinguish the two use cases of tools we have seen. The weather case is about *missing current information* (the answer does not exist in the weights at all). The arithmetic case is about *unreliable computation* (the answer probably exists in the weights as a high-probability continuation, but "probably" is not acceptable when precision matters).
 :::
 
 ::: task
-**28.** Classify each task below as `model only`, `tool strongly recommended`, or `tool required`. Provide a one-sentence justification for each.
+**28.** Decide for each task below if would recommend a tool or if the model's weights alone are sufficient. Provide a one-sentence justification for each. If you prefer a tool, briefly describe what its input and output would be:
 
 - explain what a vector is
 - summarize a given paragraph
@@ -1177,61 +1219,9 @@ What is 17.3 multiplied by 41.8? Show the full result.
 ```{python}
 # Add your solution here
 
-classifications = {
-    "explain what a vector is":                ("...", "..."),
-    "summarize a given paragraph":             ("...", "..."),
-    "find today's EUR/USD rate":               ("...", "..."),
-    "count words in a 5000-word document":     ("...", "..."),
-    "check student enrollment":                ("...", "..."),
-    "generate project ideas":                  ("...", "..."),
-    "send a confirmation email":               ("...", "..."),
-    "retrieve passages from local PDFs":       ("...", "..."),
-}
-
-for task, (category, reason) in classifications.items():
-    print(f"{category:30}  {task}")
-    print(f"  Reason: {reason}")
 ```
 :::
 
-::: worked-solution
-``` python
-classifications = {
-    "explain what a vector is": (
-        "model only",
-        "Pure knowledge from training data; the full answer is in the weights."
-    ),
-    "summarize a given paragraph": (
-        "model only",
-        "The full content is provided in the prompt; no external lookup needed."
-    ),
-    "find today's EUR/USD rate": (
-        "tool required",
-        "Exchange rates change by the second; no training data is current enough."
-    ),
-    "count words in a 5000-word document": (
-        "tool strongly recommended",
-        "Models estimate token counts but cannot guarantee an exact word count; a counter is trivially exact."
-    ),
-    "check student enrollment": (
-        "tool required",
-        "Enrollment data lives in an external database; the model has no knowledge of it."
-    ),
-    "generate project ideas": (
-        "model only",
-        "Creative generation from training knowledge; no external state is required."
-    ),
-    "send a confirmation email": (
-        "tool required",
-        "Sending email requires access to an email API; the model cannot transmit messages itself."
-    ),
-    "retrieve passages from local PDFs": (
-        "tool required",
-        "The model has no access to local files unless they are passed via a retrieval tool."
-    ),
-}
-```
-:::
 
 ::: task
 **29.** Describe the architecture of a tool-using LLM system in your own words. Your description must cover these five stages: user request, model decision, tool call, tool result, final answer. Then answer: why does adding tools change the risk profile of the system, even if each individual tool is safe?
